@@ -1,0 +1,13 @@
+backend/vendor/
+backend/.env
+.env
+backend/bootstrap/cache/*.php
+backend/storage/logs/*.log
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+
+mobile/node_modules/
+mobile/.expo/
+mobile/.expo-shared/
+mobile/dist/
