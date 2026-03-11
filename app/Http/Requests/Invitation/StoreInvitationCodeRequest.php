@@ -42,15 +42,15 @@ class StoreInvitationCodeRequest extends FormRequest
             }
 
             $targetRole = $this->input('target_role');
-            if ($actor->role === UserRole::CTO && $targetRole !== UserRole::LEAD_DEV->value) {
-                $validator->errors()->add('target_role', 'CTO can only invite lead_dev users.');
+            if ($actor->role === UserRole::CTO
+                && ! in_array($targetRole, [UserRole::LEAD_DEV->value, UserRole::PO->value], true)) {
+                $validator->errors()->add('target_role', 'CTO can only invite lead_dev or po users.');
             }
 
             if ($actor->role === UserRole::LEAD_DEV
-                && ! in_array($targetRole, [UserRole::DEVELOPER->value, UserRole::PO->value], true)) {
-                $validator->errors()->add('target_role', 'Lead can only invite developer or po users.');
+                && $targetRole !== UserRole::DEVELOPER->value) {
+                $validator->errors()->add('target_role', 'Lead can only invite developer users.');
             }
         });
     }
 }
-

@@ -50,9 +50,9 @@ class InvitationCodeService
         $targetRole = $payload['target_role'];
 
         if ($this->accessService->isCto($user)) {
-            if ($targetRole !== UserRole::LEAD_DEV->value) {
+            if (! in_array($targetRole, [UserRole::LEAD_DEV->value, UserRole::PO->value], true)) {
                 throw ValidationException::withMessages([
-                    'target_role' => ['CTO can only invite lead_dev users.'],
+                    'target_role' => ['CTO can only invite lead_dev or po users.'],
                 ]);
             }
         } elseif ($this->accessService->isLead($user)) {
@@ -62,9 +62,9 @@ class InvitationCodeService
                 ]);
             }
 
-            if (! in_array($targetRole, [UserRole::DEVELOPER->value, UserRole::PO->value], true)) {
+            if ($targetRole !== UserRole::DEVELOPER->value) {
                 throw ValidationException::withMessages([
-                    'target_role' => ['Lead can only invite developer or po users.'],
+                    'target_role' => ['Lead can only invite developer users.'],
                 ]);
             }
         } else {
