@@ -4,6 +4,7 @@ namespace App\Http\Requests\Task;
 
 use App\Enums\TaskPriority;
 use App\Enums\TaskStatus;
+use App\Enums\UserRole;
 use App\Models\Tag;
 use App\Models\Team;
 use App\Models\TeamMembership;
@@ -25,12 +26,12 @@ class UpdateTaskRequest extends FormRequest
             'title' => ['required', 'string', 'max:160'],
             'description' => ['nullable', 'string', 'max:3000'],
             'assignee_id' => ['nullable', 'integer', 'exists:users,id'],
-            'status' => ['required', 'in:'.implode(',', TaskStatus::values())],
             'priority' => ['required', 'in:'.implode(',', TaskPriority::values())],
             'blocked_reason' => ['nullable', 'string', 'max:3000'],
             'due_date' => ['nullable', 'date'],
             'tag_ids' => ['nullable', 'array'],
             'tag_ids.*' => ['integer', 'exists:tags,id'],
+            'status' => ['prohibited'],
         ];
     }
 
@@ -63,9 +64,29 @@ class UpdateTaskRequest extends FormRequest
                         $validator->errors()->add('assignee_id', 'The selected assignee is not a member of this team.');
                     }
                 }
+
+                $assigneeRole = $assignee?->role instanceof UserRole ? $assignee->role->value : (string) $assignee?->role;
+                $isSelfAssignment = $assignee !== null && (int) $assignee->id === (int) $user->id;
+                $isAllowedAssignee = $assigneeRole === UserRole::DEVELOPER->value || $isSelfAssignment;
+                if ($assignee !== null && ! $isAllowedAssignee) {
+                    $validator->errors()->add('assignee_id', 'Assignee must be a developer or yourself.');
+                }
+
+                if ($assigneeRole === UserRole::DEVELOPER->value && $assignee !== null) {
+                    $membershipCount = TeamMembership::query()
+                        ->where('organization_id', $user->organization_id)
+                        ->where('user_id', $assignee->id)
+                        ->count();
+
+                    if ($membershipCount > 1) {
+                        $validator->errors()->add('assignee_id', 'The selected developer belongs to multiple teams.');
+                    }
+                }
             }
 
-            if ($this->input('status') === TaskStatus::BLOCKED->value && ! $this->filled('blocked_reason')) {
+            $task = $this->route('task');
+            $taskStatus = $task?->status instanceof TaskStatus ? $task->status->value : (string) $task?->status;
+            if ($taskStatus === TaskStatus::BLOCKED->value && ! $this->filled('blocked_reason')) {
                 $validator->errors()->add('blocked_reason', 'Blocked reason is required when status is blocked.');
             }
 
@@ -83,5 +104,12 @@ class UpdateTaskRequest extends FormRequest
                 $validator->errors()->add('tag_ids', 'One or more tags are not in your organization.');
             }
         });
+    }
+
+    public function messages(): array
+    {
+        return [
+            'status.prohibited' => 'Status updates must use PATCH /api/tasks/{task}/status.',
+        ];
     }
 }

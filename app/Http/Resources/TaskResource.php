@@ -29,6 +29,7 @@ class TaskResource extends JsonResource
             'updated_at' => optional($this->updated_at)->toIso8601String(),
             'creator' => UserResource::make($this->whenLoaded('creator')),
             'assignee' => UserResource::make($this->whenLoaded('assignee')),
+            'team' => TeamResource::make($this->whenLoaded('team')),
             'blocked_confirmed_user' => UserResource::make($this->whenLoaded('blockedConfirmedBy')),
             'tags' => TagResource::collection($this->whenLoaded('tags')),
         ];

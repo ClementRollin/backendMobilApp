@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Enums\TaskStatus;
 use App\Enums\UserRole;
 use App\Models\Task;
+use App\Models\TaskLink;
 use App\Models\TaskStatusHistory;
+use App\Models\TeamMembership;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -33,15 +35,19 @@ class TaskService
         $priority = $filters['priority'] ?? null;
         $teamId = isset($filters['team_id']) ? (int) $filters['team_id'] : null;
         $assigneeId = isset($filters['assignee_id']) ? (int) $filters['assignee_id'] : null;
+        $creatorId = isset($filters['creator_id']) ? (int) $filters['creator_id'] : null;
+        $dueBefore = $filters['due_before'] ?? null;
+        $dueAfter = $filters['due_after'] ?? null;
+        $search = trim((string) ($filters['search'] ?? ''));
         $tagIds = $filters['tag_ids'] ?? [];
-        $perPage = (int) ($filters['per_page'] ?? 15);
+        $perPage = max(1, min(50, (int) ($filters['per_page'] ?? 15)));
 
         if ($scope === 'unassigned' && ! $this->accessService->isLead($user)) {
             throw new AuthorizationException('This scope is only available for lead users.');
         }
 
         $query = Task::query()
-            ->with(['creator', 'assignee', 'blockedConfirmedBy', 'tags'])
+            ->with(['creator', 'assignee', 'team', 'blockedConfirmedBy', 'tags'])
             ->orderByDesc('created_at');
 
         $query = $this->accessService->applyTaskScope($query, $user, $scope);
@@ -62,6 +68,26 @@ class TaskService
             $query->where('assignee_id', $assigneeId);
         }
 
+        if ($creatorId !== null) {
+            $query->where('creator_id', $creatorId);
+        }
+
+        if ($dueBefore !== null) {
+            $query->where('due_date', '<=', $dueBefore);
+        }
+
+        if ($dueAfter !== null) {
+            $query->where('due_date', '>=', $dueAfter);
+        }
+
+        if ($search !== '') {
+            $needle = '%'.mb_strtolower($search).'%';
+            $query->where(static function (Builder $builder) use ($needle): void {
+                $builder->whereRaw('LOWER(title) LIKE ?', [$needle])
+                    ->orWhereRaw("LOWER(COALESCE(description, '')) LIKE ?", [$needle]);
+            });
+        }
+
         if (is_array($tagIds) && $tagIds !== []) {
             $query->whereHas('tags', static function (Builder $builder) use ($tagIds): void {
                 $builder->whereIn('tags.id', $tagIds);
@@ -76,6 +102,8 @@ class TaskService
         if (! $this->accessService->canCreateTaskInTeam($user, (int) $payload['team_id'])) {
             throw new AuthorizationException('You are not allowed to create tasks for this team.');
         }
+
+        $this->validateAssigneeConsistency($user, (int) $payload['team_id'], $payload['assignee_id'] ?? null);
 
         return DB::transaction(function () use ($user, $payload): Task {
             $task = Task::query()->create([
@@ -105,7 +133,7 @@ class TaskService
                 metadata: ['source' => 'create']
             );
 
-            return $task->load(['creator', 'assignee', 'blockedConfirmedBy', 'tags']);
+            return $task->load(['creator', 'assignee', 'team', 'blockedConfirmedBy', 'tags']);
         });
     }
 
@@ -119,52 +147,24 @@ class TaskService
             throw new AuthorizationException('You are not allowed to move this task to this team.');
         }
 
+        $this->validateAssigneeConsistency($user, (int) $payload['team_id'], $payload['assignee_id'] ?? null);
+
         return DB::transaction(function () use ($user, $task, $payload): Task {
-            $oldStatus = $this->statusValue($task->status);
-            $newStatus = $payload['status'];
-
-            if ($oldStatus !== $newStatus && ! $this->isTransitionAllowed($user, $oldStatus, $newStatus)) {
-                throw ValidationException::withMessages([
-                    'status' => ["Transition {$oldStatus} -> {$newStatus} is not allowed for this role."],
-                ]);
-            }
-
-            if ($newStatus === TaskStatus::BLOCKED->value && empty($payload['blocked_reason'])) {
-                throw ValidationException::withMessages([
-                    'blocked_reason' => ['Blocked reason is required when moving to blocked.'],
-                ]);
-            }
-
             $task->fill([
                 'team_id' => $payload['team_id'],
                 'assignee_id' => $payload['assignee_id'] ?? null,
                 'title' => $payload['title'],
                 'description' => $payload['description'] ?? null,
-                'status' => $newStatus,
                 'priority' => $payload['priority'],
-                'blocked_reason' => $payload['blocked_reason'] ?? null,
+                'blocked_reason' => $payload['blocked_reason'] ?? $task->blocked_reason,
                 'due_date' => $payload['due_date'] ?? null,
-                'deployed_at' => $newStatus === TaskStatus::DEPLOYED->value
-                    ? ($task->deployed_at ?? now())
-                    : null,
             ])->save();
 
             if (array_key_exists('tag_ids', $payload) && is_array($payload['tag_ids'])) {
                 $task->tags()->sync($payload['tag_ids']);
             }
 
-            if ($oldStatus !== $newStatus) {
-                $this->addStatusHistory(
-                    task: $task,
-                    userId: $user->id,
-                    oldStatus: $oldStatus,
-                    newStatus: $newStatus,
-                    comment: 'Task updated.',
-                    metadata: ['source' => 'update']
-                );
-            }
-
-            return $task->load(['creator', 'assignee', 'blockedConfirmedBy', 'tags']);
+            return $task->load(['creator', 'assignee', 'team', 'blockedConfirmedBy', 'tags']);
         });
     }
 
@@ -213,7 +213,7 @@ class TaskService
                 metadata: $payload['metadata'] ?? null
             );
 
-            return $task->load(['creator', 'assignee', 'blockedConfirmedBy', 'tags']);
+            return $task->load(['creator', 'assignee', 'team', 'blockedConfirmedBy', 'tags']);
         });
     }
 
@@ -256,7 +256,30 @@ class TaskService
                 metadata: $metadata
             );
 
-            return $task->load(['creator', 'assignee', 'blockedConfirmedBy', 'tags']);
+            return $task->load(['creator', 'assignee', 'team', 'blockedConfirmedBy', 'tags']);
+        });
+    }
+
+    public function delete(User $user, Task $task): void
+    {
+        if (! $this->accessService->canManageTask($user, $task)) {
+            throw new AuthorizationException('You are not allowed to delete this task.');
+        }
+
+        DB::transaction(function () use ($task): void {
+            $task->tags()->detach();
+
+            TaskLink::query()
+                ->where('task_low_id', $task->id)
+                ->orWhere('task_high_id', $task->id)
+                ->delete();
+
+            TaskStatusHistory::query()
+                ->where('task_id', $task->id)
+                ->delete();
+
+            $task->comments()->delete();
+            $task->delete();
         });
     }
 
@@ -309,5 +332,51 @@ class TaskService
         }
 
         return (string) $status;
+    }
+
+    private function validateAssigneeConsistency(User $actor, int $teamId, mixed $assigneeId): void
+    {
+        if ($assigneeId === null) {
+            return;
+        }
+
+        $assignee = User::query()->find((int) $assigneeId);
+        if (! $assignee || (int) $assignee->organization_id !== (int) $actor->organization_id) {
+            throw ValidationException::withMessages([
+                'assignee_id' => ['The selected assignee is not in your organization.'],
+            ]);
+        }
+
+        $isTeamMember = TeamMembership::query()
+            ->where('organization_id', $actor->organization_id)
+            ->where('team_id', $teamId)
+            ->where('user_id', $assignee->id)
+            ->exists();
+        if (! $isTeamMember) {
+            throw ValidationException::withMessages([
+                'assignee_id' => ['The selected assignee is not a member of this team.'],
+            ]);
+        }
+
+        $assigneeRole = $this->roleValue($assignee);
+        $isSelfAssignment = (int) $assignee->id === (int) $actor->id;
+        if (! $isSelfAssignment && $assigneeRole !== UserRole::DEVELOPER->value) {
+            throw ValidationException::withMessages([
+                'assignee_id' => ['Assignee must be a developer or yourself.'],
+            ]);
+        }
+
+        if ($assigneeRole === UserRole::DEVELOPER->value) {
+            $membershipCount = TeamMembership::query()
+                ->where('organization_id', $actor->organization_id)
+                ->where('user_id', $assignee->id)
+                ->count();
+
+            if ($membershipCount > 1) {
+                throw ValidationException::withMessages([
+                    'assignee_id' => ['The selected developer belongs to multiple teams.'],
+                ]);
+            }
+        }
     }
 }

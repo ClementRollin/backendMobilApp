@@ -43,7 +43,7 @@ class TaskController extends Controller
 
         return ApiResponse::success(
             'Task fetched successfully.',
-            TaskResource::make($task->load(['creator', 'assignee', 'blockedConfirmedBy', 'tags']))->resolve()
+            TaskResource::make($task->load(['creator', 'assignee', 'team', 'blockedConfirmedBy', 'tags']))->resolve()
         );
     }
 
@@ -60,7 +60,7 @@ class TaskController extends Controller
     {
         $this->authorize('delete', $task);
 
-        $task->delete();
+        $this->taskService->delete($request->user(), $task);
 
         return ApiResponse::success('Task deleted successfully.', null, 200);
     }

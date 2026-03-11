@@ -152,7 +152,9 @@ class AccessService
         }
 
         if ($this->isPo($user)) {
-            return $query->whereIn('team_id', $this->userTeamIds($user));
+            return $query
+                ->whereIn('team_id', $this->userTeamIds($user))
+                ->whereNotNull('assignee_id');
         }
 
         return $query->whereRaw('1 = 0');

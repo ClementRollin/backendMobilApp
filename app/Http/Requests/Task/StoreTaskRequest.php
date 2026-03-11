@@ -4,6 +4,7 @@ namespace App\Http\Requests\Task;
 
 use App\Enums\TaskPriority;
 use App\Enums\TaskStatus;
+use App\Enums\UserRole;
 use App\Models\Tag;
 use App\Models\Team;
 use App\Models\TeamMembership;
@@ -61,6 +62,24 @@ class StoreTaskRequest extends FormRequest
                         ->exists();
                     if (! $isMember) {
                         $validator->errors()->add('assignee_id', 'The selected assignee is not a member of this team.');
+                    }
+                }
+
+                $assigneeRole = $assignee?->role instanceof UserRole ? $assignee->role->value : (string) $assignee?->role;
+                $isSelfAssignment = $assignee !== null && (int) $assignee->id === (int) $user->id;
+                $isAllowedAssignee = $assigneeRole === UserRole::DEVELOPER->value || $isSelfAssignment;
+                if ($assignee !== null && ! $isAllowedAssignee) {
+                    $validator->errors()->add('assignee_id', 'Assignee must be a developer or yourself.');
+                }
+
+                if ($assigneeRole === UserRole::DEVELOPER->value && $assignee !== null) {
+                    $membershipCount = TeamMembership::query()
+                        ->where('organization_id', $user->organization_id)
+                        ->where('user_id', $assignee->id)
+                        ->count();
+
+                    if ($membershipCount > 1) {
+                        $validator->errors()->add('assignee_id', 'The selected developer belongs to multiple teams.');
                     }
                 }
             }
