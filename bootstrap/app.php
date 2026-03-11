@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -36,6 +37,9 @@ return Application::configure(basePath: dirname(__DIR__))
             } elseif ($e instanceof AuthenticationException) {
                 $status = 401;
                 $message = $e->getMessage() !== '' ? $e->getMessage() : 'Unauthenticated.';
+            } elseif ($e instanceof AuthorizationException) {
+                $status = 403;
+                $message = $e->getMessage() !== '' ? $e->getMessage() : 'Forbidden.';
             } elseif ($e instanceof ModelNotFoundException) {
                 $status = 404;
                 $message = 'Resource not found.';
