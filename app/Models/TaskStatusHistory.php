@@ -2,26 +2,34 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class Comment extends Model
+class TaskStatusHistory extends Model
 {
     use HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'task_id',
         'user_id',
-        'content',
+        'old_status',
+        'new_status',
+        'comment',
+        'metadata',
     ];
 
-    public function scopeForOrganization(Builder $query, int $organizationId): Builder
+    protected function casts(): array
     {
-        return $query->whereHas('task', static function (Builder $taskQuery) use ($organizationId): void {
-            $taskQuery->where('organization_id', $organizationId);
-        });
+        return [
+            'metadata' => 'array',
+        ];
+    }
+
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
     }
 
     public function task(): BelongsTo
@@ -34,3 +42,4 @@ class Comment extends Model
         return $this->belongsTo(User::class);
     }
 }
+
