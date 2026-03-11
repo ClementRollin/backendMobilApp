@@ -2,10 +2,9 @@
 
 namespace App\Http\Requests\Task;
 
-use App\Enums\TaskStatus;
 use Illuminate\Foundation\Http\FormRequest;
 
-class UpdateTaskStatusRequest extends FormRequest
+class ConfirmBlockedRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -15,10 +14,9 @@ class UpdateTaskStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', 'in:'.implode(',', TaskStatus::values())],
             'comment' => ['nullable', 'string', 'max:1000'],
-            'blocked_reason' => ['nullable', 'string', 'max:3000'],
             'metadata' => ['nullable', 'array'],
         ];
     }
 }
+
