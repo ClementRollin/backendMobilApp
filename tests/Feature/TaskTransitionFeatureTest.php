@@ -93,6 +93,29 @@ class TaskTransitionFeatureTest extends TestCase
         $response->assertJsonPath('data.status', TaskStatus::DEPLOYED->value);
     }
 
+    public function test_blocked_transition_requires_blocked_reason(): void
+    {
+        $lead = User::query()->where('email', 'lead@technova.fr')->firstOrFail();
+        $team = Team::query()->where('name', 'Equipe API')->firstOrFail();
+        $task = Task::query()->create([
+            'organization_id' => $lead->organization_id,
+            'team_id' => $team->id,
+            'creator_id' => $lead->id,
+            'assignee_id' => User::query()->where('email', 'dev@technova.fr')->value('id'),
+            'title' => 'Blocked reason required',
+            'description' => null,
+            'status' => TaskStatus::IN_PROGRESS->value,
+            'priority' => TaskPriority::MEDIUM->value,
+        ]);
+
+        $response = $this->patchJson("/api/tasks/{$task->id}/status", [
+            'status' => TaskStatus::BLOCKED->value,
+        ], $this->authHeaders('lead@technova.fr'));
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('blocked_reason', $response->json('errors'));
+    }
+
     private function authHeaders(string $email): array
     {
         $user = User::query()->where('email', $email)->firstOrFail();
@@ -104,4 +127,3 @@ class TaskTransitionFeatureTest extends TestCase
         ];
     }
 }
-
