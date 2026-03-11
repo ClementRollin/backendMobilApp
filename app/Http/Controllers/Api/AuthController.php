@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Requests\Auth\RegisterCtoRequest;
 use App\Http\Resources\UserResource;
 use App\Services\AuthService;
 use App\Support\ApiResponse;
@@ -22,6 +23,16 @@ class AuthController extends Controller
         $result = $this->authService->register($request->validated());
 
         return ApiResponse::success('Registration successful.', [
+            'token' => $result['token'],
+            'user' => UserResource::make($result['user'])->resolve(),
+        ], 201);
+    }
+
+    public function registerCto(RegisterCtoRequest $request): JsonResponse
+    {
+        $result = $this->authService->registerCto($request->validated());
+
+        return ApiResponse::success('CTO registration successful.', [
             'token' => $result['token'],
             'user' => UserResource::make($result['user'])->resolve(),
         ], 201);

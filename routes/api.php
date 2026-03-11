@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', fn () => ApiResponse::success('TaskCollab API is running.', null));
 
 Route::post('/register', [AuthController::class, 'register']);
+Route::post('/register-cto', [AuthController::class, 'registerCto']);
 Route::post('/login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum')->group(function () {
