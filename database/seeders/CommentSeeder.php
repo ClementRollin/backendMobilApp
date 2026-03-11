@@ -11,31 +11,37 @@ class CommentSeeder extends Seeder
 {
     public function run(): void
     {
-        $alice = User::query()->where('email', 'alice@example.com')->firstOrFail();
-        $bob = User::query()->where('email', 'bob@example.com')->firstOrFail();
-        $chloe = User::query()->where('email', 'chloe@example.com')->firstOrFail();
+        $lead = User::query()->where('email', 'lead@technova.fr')->firstOrFail();
+        $developer = User::query()->where('email', 'dev@technova.fr')->firstOrFail();
+        $po = User::query()->where('email', 'po@technova.fr')->firstOrFail();
+        $blockedTask = Task::query()->where('title', 'Stabiliser la campagne de tests')->firstOrFail();
+        $reviewTask = Task::query()->where('title', 'Finaliser API Auth')->firstOrFail();
 
         Comment::query()->delete();
 
-        $taskA = Task::query()->where('title', 'Préparer la soutenance mobile')->firstOrFail();
-        $taskB = Task::query()->where('title', 'Tester les endpoints API')->firstOrFail();
-
         Comment::query()->create([
-            'task_id' => $taskA->id,
-            'user_id' => $alice->id,
-            'content' => 'Je prépare le script de présentation cette après-midi.',
+            'task_id' => $reviewTask->id,
+            'user_id' => $developer->id,
+            'content' => 'Le correctif OAuth est pret pour revue.',
         ]);
 
         Comment::query()->create([
-            'task_id' => $taskA->id,
-            'user_id' => $bob->id,
-            'content' => 'Je prends les captures d’écran de l’app mobile.',
+            'task_id' => $blockedTask->id,
+            'user_id' => $developer->id,
+            'content' => 'Blocage confirme, service externe hors ligne.',
         ]);
 
         Comment::query()->create([
-            'task_id' => $taskB->id,
-            'user_id' => $chloe->id,
-            'content' => 'Les retours 422 sont conformes pour les validations.',
+            'task_id' => $blockedTask->id,
+            'user_id' => $lead->id,
+            'content' => 'J analyse le plan de contournement avec le PO.',
+        ]);
+
+        Comment::query()->create([
+            'task_id' => $reviewTask->id,
+            'user_id' => $po->id,
+            'content' => 'Scenario de validation fonctionnelle en preparation.',
         ]);
     }
 }
+
