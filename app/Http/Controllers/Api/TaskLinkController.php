@@ -46,9 +46,8 @@ class TaskLinkController extends Controller
     {
         $this->authorize('delete', $taskLink);
 
-        $this->taskLinkService->delete($taskLink);
+        $this->taskLinkService->delete($request->user(), $taskLink);
 
         return ApiResponse::success('Task link deleted successfully.', null);
     }
 }
-

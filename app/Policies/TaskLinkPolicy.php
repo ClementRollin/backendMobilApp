@@ -33,12 +33,13 @@ class TaskLinkPolicy
             return false;
         }
 
-        $task = $taskLink->lowTask;
-        if ($task === null) {
+        $lowTask = $taskLink->lowTask;
+        $highTask = $taskLink->highTask;
+        if ($lowTask === null || $highTask === null) {
             return false;
         }
 
-        return $this->accessService->canManageTask($user, $task);
+        return $this->accessService->canManageTask($user, $lowTask)
+            && $this->accessService->canManageTask($user, $highTask);
     }
 }
-

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\TaskLink;
 
 use App\Models\Task;
+use App\Models\TaskLink;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -37,15 +38,23 @@ class StoreTaskLinkRequest extends FormRequest
                 return;
             }
 
-            if ((int) $task->organization_id !== (int) $user->organization_id
-                || (int) $linkedTask->organization_id !== (int) $user->organization_id) {
-                $validator->errors()->add('linked_task_id', 'Linked task must belong to your organization.');
-            }
-
             if ((int) $task->id === (int) $linkedTask->id) {
                 $validator->errors()->add('linked_task_id', 'A task cannot be linked to itself.');
+                return;
+            }
+
+            $lowId = min((int) $task->id, (int) $linkedTask->id);
+            $highId = max((int) $task->id, (int) $linkedTask->id);
+
+            $alreadyExists = TaskLink::query()
+                ->where('organization_id', $user->organization_id)
+                ->where('task_low_id', $lowId)
+                ->where('task_high_id', $highId)
+                ->exists();
+
+            if ($alreadyExists) {
+                $validator->errors()->add('linked_task_id', 'A link already exists between these tasks.');
             }
         });
     }
 }
-

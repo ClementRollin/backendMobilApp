@@ -22,7 +22,7 @@ class TaskLinkService
         }
 
         return TaskLink::query()
-            ->with(['lowTask.creator', 'lowTask.assignee', 'highTask.creator', 'highTask.assignee'])
+            ->with(['lowTask.assignee', 'highTask.assignee'])
             ->where('organization_id', $user->organization_id)
             ->where(function ($query) use ($task): void {
                 $query->where('task_low_id', $task->id)
@@ -38,30 +38,47 @@ class TaskLinkService
             throw new AuthorizationException('You are not allowed to create links for this task.');
         }
 
-        if (! $this->accessService->canAccessTask($user, $linkedTask)) {
-            throw ValidationException::withMessages([
-                'linked_task_id' => ['You cannot link to a task outside your allowed perimeter.'],
-            ]);
+        if (! $this->accessService->canManageTask($user, $linkedTask)) {
+            throw new AuthorizationException('You are not allowed to link this target task.');
         }
 
         $lowId = min((int) $task->id, (int) $linkedTask->id);
         $highId = max((int) $task->id, (int) $linkedTask->id);
 
-        return TaskLink::query()->firstOrCreate(
-            [
-                'organization_id' => $user->organization_id,
-                'task_low_id' => $lowId,
-                'task_high_id' => $highId,
-            ],
-            [
-                'link_type' => $linkType,
-            ]
-        )->load(['lowTask.creator', 'lowTask.assignee', 'highTask.creator', 'highTask.assignee']);
+        $alreadyExists = TaskLink::query()
+            ->where('organization_id', $user->organization_id)
+            ->where('task_low_id', $lowId)
+            ->where('task_high_id', $highId)
+            ->exists();
+
+        if ($alreadyExists) {
+            throw ValidationException::withMessages([
+                'linked_task_id' => ['A link already exists between these tasks.'],
+            ]);
+        }
+
+        return TaskLink::query()->create([
+            'organization_id' => $user->organization_id,
+            'task_low_id' => $lowId,
+            'task_high_id' => $highId,
+            'link_type' => $linkType,
+        ])->load(['lowTask.assignee', 'highTask.assignee']);
     }
 
-    public function delete(TaskLink $taskLink): void
+    public function delete(User $user, TaskLink $taskLink): void
     {
+        $lowTask = $taskLink->lowTask;
+        $highTask = $taskLink->highTask;
+
+        if (! $lowTask || ! $highTask) {
+            throw new AuthorizationException('Task link cannot be resolved.');
+        }
+
+        if (! $this->accessService->canManageTask($user, $lowTask)
+            || ! $this->accessService->canManageTask($user, $highTask)) {
+            throw new AuthorizationException('You are not allowed to delete this task link.');
+        }
+
         $taskLink->delete();
     }
 }
-
